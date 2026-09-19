@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">עוזר נהיגה</string>
+    <string name="app_name_en">DriveVoice</string>
+    <string name="driving_mode_title">מצב נהיגה</string>
+    <string name="tap_to_speak">הקש לדבר</string>
+    <string name="listening">מאזין…</string>
+    <string name="processing">מעבד…</string>
+    <string name="speaking">מדבר…</string>
+    <string name="idle">מוכן</string>
+    <string name="heard_label">מה שנשמע</string>
+    <string name="last_action_label">פעולה אחרונה</string>
+    <string name="confirm_yes">כן</string>
+    <string name="confirm_no">לא</string>
+    <string name="awaiting_confirm">ממתין לאישור</string>
+    <string name="permissions_title">הרשאות לנהיגה בטוחה</string>
+    <string name="permissions_continue">המשך</string>
+    <string name="settings_title">הגדרות</string>
+    <string name="help_title">עזרה ופקודות</string>
+    <string name="nav_home">נהיגה</string>
+    <string name="nav_settings">הגדרות</string>
+    <string name="nav_help">עזרה</string>
+    <string name="speech_locale">he-IL</string>
+    <string name="confirm_before_sensitive">השמע אישור לפני שיחה / SMS / מייל</string>
+    <string name="recognition_language">שפת זיהוי</string>
+    <string name="favorite_apps">אפליקציות מועדפות</string>
+    <string name="permission_mic">מיקרופון — זיהוי קולי</string>
+    <string name="permission_contacts">אנשי קשר — חיוג ושליחת הודעות</string>
+    <string name="permission_call">שיחות — חיוג ידיים-חופשיות</string>
+    <string name="permission_sms">SMS — שליחת הודעות</string>
+    <string name="permission_notifications">התראות — משוב במצב נהיגה</string>
+    <string name="no_speech">לא זוהה דיבור. נסה שוב.</string>
+    <string name="action_cancelled">בוטל</string>
+    <string name="action_confirmed">מבצע…</string>
+    <string name="contact_not_found">איש קשר לא נמצא</string>
+    <string name="app_not_found">אפליקציה לא נמצאה</string>
+</resources>
