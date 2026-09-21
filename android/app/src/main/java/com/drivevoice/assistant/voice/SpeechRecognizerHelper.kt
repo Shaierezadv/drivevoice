@@ -29,10 +29,12 @@ class SpeechRecognizerHelper(
     private val main = Handler(Looper.getMainLooper())
     private var retries = 0
     private var destroyed = false
+    private var loopOnFailure = false
 
     fun isAvailable(): Boolean = SpeechRecognizer.isRecognitionAvailable(context)
 
-    fun startListening() {
+    fun startListening(loopOnFailure: Boolean = false) {
+        this.loopOnFailure = loopOnFailure
         runOnMain { startInternal(resetRetries = true) }
     }
 
@@ -73,6 +75,13 @@ class SpeechRecognizerHelper(
             }
 
             override fun onError(error: Int) {
+                if (!destroyed && loopOnFailure &&
+                    error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS
+                ) {
+                    val delay = if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 700L else 350L
+                    main.postDelayed({ startInternal(resetRetries = true) }, delay)
+                    return
+                }
                 val retryable = error == SpeechRecognizer.ERROR_NO_MATCH ||
                     error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
                     error == SpeechRecognizer.ERROR_CLIENT ||
@@ -102,8 +111,13 @@ class SpeechRecognizerHelper(
             override fun onResults(results: Bundle?) {
                 val texts = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 val best = texts?.firstOrNull().orEmpty()
-                if (best.isNotBlank()) listener.onResult(best)
-                else listener.onError("לא זוהה דיבור")
+                if (best.isNotBlank()) {
+                    listener.onResult(best)
+                } else if (loopOnFailure && !destroyed) {
+                    main.postDelayed({ startInternal(resetRetries = true) }, 350)
+                } else {
+                    listener.onError("לא זוהה דיבור")
+                }
             }
 
             override fun onPartialResults(partialResults: Bundle?) {

@@ -28,7 +28,8 @@
     <string name="permission_contacts">אנשי קשר — חיוג ושליחת הודעות</string>
     <string name="permission_call">שיחות — חיוג ידיים-חופשיות</string>
     <string name="permission_sms">SMS — שליחת הודעות</string>
-    <string name="permission_notifications">התראות — משוב במצב נהיגה</string>
+    <string name="permission_notifications">התראות — מיקרופון פעיל ברקע</string>
+    <string name="a11y_whatsapp_desc">DriveVoice משתמש בנגישות רק כדי ללחוץ על שלח בוואטסאפ כשבחרת שליחה מוסתרת. האפליקציה לא קוראת שיחות או הודעות אחרות.</string>
     <string name="no_speech">לא זוהה דיבור. נסה שוב.</string>
     <string name="action_cancelled">בוטל</string>
     <string name="action_confirmed">מבצע…</string>

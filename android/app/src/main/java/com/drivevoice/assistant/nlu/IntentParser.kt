@@ -31,6 +31,8 @@ object IntentParser {
 
         parseNavigate(text, raw)?.let { return it }
         parseMedia(text, raw)?.let { return it }
+        parseStopListen(text, raw)?.let { return it }
+        parseWhatsApp(text, raw)?.let { return it }
         parseCall(text, raw)?.let { return it }
         parseEmail(text, raw)?.let { return it }
         parseSms(text, raw)?.let { return it }
@@ -200,6 +202,43 @@ object IntentParser {
                 return ParsedIntent(IntentType.MEDIA, mediaAction = MediaAction.NEXT, rawText = raw)
             Regex("""^(?:שיר\s+קודם|השיר\s+הקודם)$""").matches(t) ->
                 return ParsedIntent(IntentType.MEDIA, mediaAction = MediaAction.PREV, rawText = raw)
+        }
+        return null
+    }
+
+    private fun parseWhatsApp(text: String, raw: String): ParsedIntent? {
+        if (!Regex("""וואטסאפ|ווטסאפ|whatsapp""", RegexOption.IGNORE_CASE).containsMatchIn(text)) {
+            return null
+        }
+        val m = Regex(
+            """^(?:שלח(?:י)?\s+)?(?:הודעה\s+)?(?:ב)?(?:וואטסאפ|ווטסאפ|whatsapp)\s+(?:אל\s+|ל)?(.+)$""",
+            RegexOption.IGNORE_CASE
+        ).find(text) ?: return null
+        val rest = m.groupValues[1].trim().removePrefix("ל").trim()
+        if (rest.isBlank()) return null
+        val phone = extractPhone(rest)
+        if (phone != null) {
+            val afterPhone = rest.replaceFirst(phonePattern, "").trim()
+            return ParsedIntent(
+                IntentType.WHATSAPP,
+                phoneNumber = phone,
+                messageBody = afterPhone.ifBlank { null },
+                rawText = raw
+            )
+        }
+        val (name, body) = splitNameAndBody(rest)
+        if (name.isBlank()) return null
+        return ParsedIntent(
+            IntentType.WHATSAPP,
+            contactName = cleanName(name),
+            messageBody = body.ifBlank { null },
+            rawText = raw
+        )
+    }
+
+    private fun parseStopListen(text: String, raw: String): ParsedIntent? {
+        if (Regex("""^(?:עצור|תפסיק|כבה)\s+(?:את\s+)?(?:האזנה|ההאזנה|מילת ההפעלה)$""").matches(text)) {
+            return ParsedIntent(IntentType.STOP_LISTEN, rawText = raw)
         }
         return null
     }
