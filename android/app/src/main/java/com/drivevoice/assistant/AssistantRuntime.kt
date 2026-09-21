@@ -274,6 +274,13 @@ class AssistantRuntime(private val app: Application) {
         }
     }
 
+    fun submitText(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        ui = ui.copy(transcript = trimmed, assistantState = AssistantState.PROCESSING, error = null)
+        handleTranscript(trimmed)
+    }
+
     private fun handleTranscript(text: String) {
         val awaiting = ui.pendingIntent != null
         val parsed = IntentParser.parse(text, awaitingConfirm = awaiting)

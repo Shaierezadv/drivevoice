@@ -143,7 +143,8 @@ fun DriveVoiceRoot(vm: DrivingViewModel = viewModel()) {
                     state = state,
                     onMicClick = { vm.toggleListen() },
                     onConfirmYes = { vm.confirmPending() },
-                    onConfirmNo = { vm.cancelPending() }
+                    onConfirmNo = { vm.cancelPending() },
+                    onSubmitText = { vm.submitText(it) }
                 )
             }
             composable(Dest.Settings.route) {

@@ -18,4 +18,5 @@ class DrivingViewModel(app: Application) : AndroidViewModel(app) {
     fun setWakePhrase(value: String) = runtime.setWakePhrase(value)
     fun setWhatsAppHidden(value: Boolean) = runtime.setWhatsAppHidden(value)
     fun ensureBackground() = runtime.ensureBackgroundService()
+    fun submitText(text: String) = runtime.submitText(text)
 }

@@ -42,7 +42,13 @@ object IntentParser {
     }
 
     private fun normalize(s: String): String {
-        var t = s.trim()
+        // Protect emails: punctuation strip would turn name@x.com into name@x com
+        val emails = emailPattern.findAll(s).map { it.value }.toList()
+        var t = s
+        emails.forEachIndexed { idx, email ->
+            t = t.replaceFirst(email, " EMAILTOKEN${idx} ")
+        }
+        t = t.trim()
             .replace('\u200f', ' ')
             .replace('\u200e', ' ')
             .replace(Regex("[.,;:!?()\\[\\]\"'`״׳]"), " ")
@@ -51,6 +57,9 @@ object IntentParser {
         t = t.replace(Regex("^(?:אפשר|אנא|תוכל|תוכלי)\\s+"), "")
         t = t.replace(Regex("\\s+בבקשה$"), "")
         t = HebrewNumbers.replaceSpokenDigits(t)
+        emails.forEachIndexed { idx, email ->
+            t = t.replace("EMAILTOKEN${idx}", email)
+        }
         return t
     }
 
@@ -169,6 +178,14 @@ object IntentParser {
     }
 
     private fun parseOpenApp(text: String, raw: String): ParsedIntent? {
+        // English for emulator / Latin keyboard: "open maps"
+        Regex("""^(?:open|launch|start)\s+(.+)$""", RegexOption.IGNORE_CASE).matchEntire(text)?.let { em ->
+            val label = em.groupValues[1].trim()
+            if (label.isNotBlank()) {
+                return ParsedIntent(IntentType.OPEN_APP, appLabel = normalizeAppLabel(label), rawText = raw)
+            }
+        }
+
         val m = Regex("""^(?:פתח|תפתח|תפתחי|הפעל|תפעיל)\s+(?:את\s+)?(.+)$""").find(text)
             ?: return null
         val label = m.groupValues[1].trim()

@@ -7,6 +7,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,23 +18,33 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,12 +55,14 @@ import com.drivevoice.assistant.ui.theme.ConfirmGreen
 import com.drivevoice.assistant.ui.theme.MicActive
 import com.drivevoice.assistant.ui.theme.MicIdle
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DrivingModeScreen(
     state: UiState,
     onMicClick: () -> Unit,
     onConfirmYes: () -> Unit,
-    onConfirmNo: () -> Unit
+    onConfirmNo: () -> Unit,
+    onSubmitText: (String) -> Unit = {}
 ) {
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -66,11 +80,26 @@ fun DrivingModeScreen(
         animationSpec = tween(400),
         label = "micScale"
     )
+    var typed by remember { mutableStateOf("") }
+    val quick = listOf(
+        "פתח מפות",
+        "פתח כרום",
+        "פתח חיוג",
+        "פתח וואטסאפ",
+        "נווט לבית"
+    )
+
+    fun sendTyped() {
+        val t = typed.trim()
+        if (t.isEmpty()) return
+        onSubmitText(t)
+        typed = ""
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(20.dp),
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
@@ -82,27 +111,38 @@ fun DrivingModeScreen(
             text = stateLabel(state.assistantState),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(top = 8.dp)
+            modifier = Modifier.padding(top = 4.dp)
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         StatusCard(title = "מה שנשמע", body = state.transcript.ifBlank { "—" })
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         StatusCard(title = "פעולה אחרונה", body = state.lastAction.ifBlank { "—" })
 
         if (state.candidates.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             StatusCard(
                 title = "בחר איש קשר",
                 body = state.candidates.joinToString(" · ")
             )
         }
 
+        if (!state.error.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = state.error ?: "",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
         if (state.assistantState == AssistantState.AWAITING_CONFIRM ||
             state.pendingIntent != null
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = state.confirmPrompt.ifBlank { "ממתין לאישור" },
                 style = MaterialTheme.typography.titleLarge,
@@ -136,6 +176,50 @@ fun DrivingModeScreen(
             }
         }
 
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = "פקודות מהירות",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.fillMaxWidth()
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            quick.forEach { cmd ->
+                FilledTonalButton(onClick = { onSubmitText(cmd) }) {
+                    Text(cmd)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = typed,
+            onValueChange = { typed = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("הקלדת פקודה") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = { sendTyped() }),
+            trailingIcon = {
+                IconButton(onClick = { sendTyped() }) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "שלח")
+                }
+            }
+        )
+        Button(
+            onClick = { sendTyped() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp)
+                .height(48.dp)
+        ) {
+            Text("שלח פקודה", fontSize = 18.sp)
+        }
+
         Spacer(modifier = Modifier.weight(1f))
 
         Box(contentAlignment = Alignment.Center) {
@@ -144,13 +228,13 @@ fun DrivingModeScreen(
                 shape = CircleShape,
                 containerColor = if (listening) MicActive else MicIdle,
                 modifier = Modifier
-                    .size(120.dp)
+                    .size(100.dp)
                     .scale(scale)
             ) {
                 Icon(
                     imageVector = Icons.Default.Mic,
                     contentDescription = "מיקרופון",
-                    modifier = Modifier.size(56.dp),
+                    modifier = Modifier.size(48.dp),
                     tint = MaterialTheme.colorScheme.onPrimary
                 )
             }
@@ -163,11 +247,11 @@ fun DrivingModeScreen(
                     "מאזין… הקש לעצירה"
                 }
             } else if (state.backgroundListening) {
-                "אמור «${state.wakePhrase}» או הקש לדבר"
+                "אמור «${state.wakePhrase}» / הקש / הקלד"
             } else {
-                "הקש לדבר"
+                "הקש או הקלד"
             },
-            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Center
