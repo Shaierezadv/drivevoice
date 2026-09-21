@@ -202,4 +202,34 @@ class IntentParserTest {
         val r = IntentParser.parse("לא תודה", awaitingConfirm = true)
         assertEquals(IntentType.CANCEL, r.type)
     }
+
+    @Test
+    fun whatsappSend() {
+        val r = IntentParser.parse("שלח וואטסאפ ליוסי אני בדרך")
+        assertEquals(IntentType.WHATSAPP, r.type)
+        assertEquals("יוסי", r.contactName)
+        assertEquals("אני בדרך", r.messageBody)
+        assertTrue(r.needsConfirmation)
+    }
+
+    @Test
+    fun whatsappShort() {
+        val r = IntentParser.parse("וואטסאפ למיכל מחכה בחניה")
+        assertEquals(IntentType.WHATSAPP, r.type)
+        assertEquals("מיכל", r.contactName)
+        assertEquals("מחכה בחניה", r.messageBody)
+    }
+
+    @Test
+    fun openWhatsappStillOpensApp() {
+        val r = IntentParser.parse("פתח וואטסאפ")
+        assertEquals(IntentType.OPEN_APP, r.type)
+        assertEquals("WhatsApp", r.appLabel)
+    }
+
+    @Test
+    fun stopListen() {
+        assertEquals(IntentType.STOP_LISTEN, IntentParser.parse("עצור האזנה").type)
+        assertEquals(IntentType.CANCEL, IntentParser.parse("עצור").type)
+    }
 }

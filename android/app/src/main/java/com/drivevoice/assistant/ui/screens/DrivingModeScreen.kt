@@ -59,7 +59,8 @@ fun DrivingModeScreen(
         }
     }
 
-    val listening = state.assistantState == AssistantState.LISTENING
+    val listening = state.assistantState == AssistantState.LISTENING ||
+        state.assistantState == AssistantState.LISTENING_WAKE
     val scale by animateFloatAsState(
         targetValue = if (listening) 1.12f else 1f,
         animationSpec = tween(400),
@@ -155,7 +156,17 @@ fun DrivingModeScreen(
             }
         }
         Text(
-            text = if (listening) "מאזין… הקש לעצירה" else "הקש לדבר — אחרי אישור האפליקציה מאזינה לבד",
+            text = if (listening) {
+                if (state.assistantState == AssistantState.LISTENING_WAKE) {
+                    "מחכה ל«${state.wakePhrase}» — הקש לפקודה מיידית"
+                } else {
+                    "מאזין… הקש לעצירה"
+                }
+            } else if (state.backgroundListening) {
+                "אמור «${state.wakePhrase}» או הקש לדבר"
+            } else {
+                "הקש לדבר"
+            },
             modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground,
@@ -193,6 +204,7 @@ private fun StatusCard(title: String, body: String) {
 private fun stateLabel(s: AssistantState): String = when (s) {
     AssistantState.IDLE -> "מוכן"
     AssistantState.LISTENING -> "מאזין…"
+    AssistantState.LISTENING_WAKE -> "מחכה למילת הפעלה"
     AssistantState.PROCESSING -> "מעבד…"
     AssistantState.SPEAKING -> "מדבר…"
     AssistantState.AWAITING_CONFIRM -> "ממתין לאישור"

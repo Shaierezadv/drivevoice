@@ -19,6 +19,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,6 +61,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DriveVoiceRoot(vm: DrivingViewModel = viewModel()) {
     val context = LocalContext.current
+    val state = vm.ui
     var missing by remember { mutableStateOf(AppPermissions.missing(context)) }
     val nav = rememberNavController()
     val start = if (missing.isEmpty()) Dest.Driving.route else Dest.Permissions.route
@@ -133,8 +135,12 @@ fun DriveVoiceRoot(vm: DrivingViewModel = viewModel()) {
                 )
             }
             composable(Dest.Driving.route) {
+                DisposableEffect(Unit) {
+                    vm.ensureBackground()
+                    onDispose { }
+                }
                 DrivingModeScreen(
-                    state = vm.ui,
+                    state = state,
                     onMicClick = { vm.toggleListen() },
                     onConfirmYes = { vm.confirmPending() },
                     onConfirmNo = { vm.cancelPending() }
@@ -142,8 +148,14 @@ fun DriveVoiceRoot(vm: DrivingViewModel = viewModel()) {
             }
             composable(Dest.Settings.route) {
                 SettingsScreen(
-                    confirmBeforeSensitive = vm.ui.confirmBeforeSensitive,
-                    onConfirmChanged = { vm.setConfirmBeforeSensitive(it) }
+                    confirmBeforeSensitive = state.confirmBeforeSensitive,
+                    backgroundListening = state.backgroundListening,
+                    wakePhrase = state.wakePhrase,
+                    whatsAppHidden = state.whatsAppHidden,
+                    onConfirmChanged = { vm.setConfirmBeforeSensitive(it) },
+                    onBackgroundChanged = { vm.setBackgroundListening(it) },
+                    onWakePhraseChanged = { vm.setWakePhrase(it) },
+                    onWhatsAppHiddenChanged = { vm.setWhatsAppHidden(it) }
                 )
             }
             composable(Dest.Help.route) {

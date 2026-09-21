@@ -7,11 +7,13 @@ enum class IntentType {
     CALL,
     SMS,
     EMAIL,
+    WHATSAPP,
     OPEN_APP,
     NAVIGATE,
     MEDIA,
     CONFIRM,
     CANCEL,
+    STOP_LISTEN,
     UNKNOWN
 }
 
@@ -35,7 +37,10 @@ data class ParsedIntent(
     val rawText: String = ""
 ) {
     val needsConfirmation: Boolean
-        get() = type == IntentType.CALL || type == IntentType.SMS || type == IntentType.EMAIL
+        get() = type == IntentType.CALL ||
+            type == IntentType.SMS ||
+            type == IntentType.EMAIL ||
+            type == IntentType.WHATSAPP
 
     fun summaryHe(): String = when (type) {
         IntentType.CALL -> {
@@ -52,6 +57,11 @@ data class ParsedIntent(
             val sub = subject?.let { " נושא: $it" } ?: ""
             "מייל אל $to$sub"
         }
+        IntentType.WHATSAPP -> {
+            val target = contactName ?: phoneNumber ?: "?"
+            val body = messageBody?.let { " — $it" } ?: ""
+            "וואטסאפ אל $target$body"
+        }
         IntentType.OPEN_APP -> "פתיחת ${appLabel ?: "?"}"
         IntentType.NAVIGATE -> "ניווט אל ${destination ?: "?"}"
         IntentType.MEDIA -> when (mediaAction) {
@@ -63,6 +73,7 @@ data class ParsedIntent(
         }
         IntentType.CONFIRM -> "אישור"
         IntentType.CANCEL -> "ביטול"
+        IntentType.STOP_LISTEN -> "עצירת האזנה"
         IntentType.UNKNOWN -> "לא זוהתה פקודה"
     }
 }

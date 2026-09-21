@@ -28,12 +28,13 @@ sealed class ActionResult {
  */
 class ActionExecutor(
     private val context: Context,
-    private val contacts: ContactResolver = ContactResolver(context)
+    private val contacts: ContactResolver = ContactResolver(context),
+    private val whatsAppHidden: () -> Boolean = { false }
 ) {
 
     fun prepareOrExecute(intent: ParsedIntent, confirmed: Boolean): ActionResult {
         return when (intent.type) {
-            IntentType.CALL, IntentType.SMS, IntentType.EMAIL -> {
+            IntentType.CALL, IntentType.SMS, IntentType.EMAIL, IntentType.WHATSAPP -> {
                 if (!confirmed) {
                     ActionResult.NeedsConfirm(intent, "לאשר: ${intent.summaryHe()}?")
                 } else {
@@ -43,7 +44,7 @@ class ActionExecutor(
             IntentType.OPEN_APP -> openApp(intent.appLabel)
             IntentType.NAVIGATE -> navigateTo(intent.destination)
             IntentType.MEDIA -> dispatchMedia(intent.mediaAction)
-            IntentType.CONFIRM, IntentType.CANCEL, IntentType.UNKNOWN ->
+            IntentType.CONFIRM, IntentType.CANCEL, IntentType.STOP_LISTEN, IntentType.UNKNOWN ->
                 ActionResult.Failure("אין פעולה לביצוע")
         }
     }
@@ -52,6 +53,7 @@ class ActionExecutor(
         IntentType.CALL -> placeCall(intent)
         IntentType.SMS -> sendSms(intent)
         IntentType.EMAIL -> sendEmail(intent)
+        IntentType.WHATSAPP -> sendWhatsApp(intent)
         else -> ActionResult.Failure("סוג פעולה לא נתמך")
     }
 
@@ -151,6 +153,31 @@ class ActionExecutor(
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         context.startActivity(i)
+    }
+
+    private fun sendWhatsApp(intent: ParsedIntent): ActionResult {
+        val phone: String
+        val body: String
+        if (!intent.phoneNumber.isNullOrBlank()) {
+            phone = intent.phoneNumber.replace(Regex("[^\\d+]"), "")
+            if (phone.length < 7) return ActionResult.Failure("איש קשר או מספר לא נמצא")
+            body = intent.messageBody.orEmpty()
+        } else {
+            val rest = listOfNotNull(intent.contactName, intent.messageBody).joinToString(" ")
+            val match = contacts.resolveNameAndBody(rest)
+                ?: return ActionResult.Failure("איש קשר או מספר לא נמצא")
+            val query = intent.contactName.orEmpty()
+            val unique = contacts.pickUnique(match.candidates, query)
+                ?: return ActionResult.NeedsDisambiguation(
+                    intent.copy(messageBody = match.body.ifBlank { intent.messageBody }),
+                    match.candidates,
+                    "מצאתי כמה אנשי קשר: ${names(match.candidates)}. אמור את השם המלא"
+                )
+            phone = unique.phoneNumber
+            body = match.body.ifBlank { intent.messageBody.orEmpty() }
+        }
+        val style = if (whatsAppHidden()) WhatsAppSendStyle.HIDDEN else WhatsAppSendStyle.OPEN_CHAT
+        return WhatsAppSender(context).send(phone, body, style)
     }
 
     private fun sendEmail(intent: ParsedIntent): ActionResult {
