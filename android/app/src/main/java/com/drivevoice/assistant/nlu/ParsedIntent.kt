@@ -1,16 +1,25 @@
 package com.drivevoice.assistant.nlu
 
 /**
- * On-device NLU result for DriveVoice MVP.
+ * On-device NLU result for DriveVoice.
  */
 enum class IntentType {
     CALL,
     SMS,
     EMAIL,
     OPEN_APP,
+    NAVIGATE,
+    MEDIA,
     CONFIRM,
     CANCEL,
     UNKNOWN
+}
+
+enum class MediaAction {
+    PLAY,
+    PAUSE,
+    NEXT,
+    PREV
 }
 
 data class ParsedIntent(
@@ -21,6 +30,8 @@ data class ParsedIntent(
     val email: String? = null,
     val subject: String? = null,
     val appLabel: String? = null,
+    val destination: String? = null,
+    val mediaAction: MediaAction? = null,
     val rawText: String = ""
 ) {
     val needsConfirmation: Boolean
@@ -42,6 +53,14 @@ data class ParsedIntent(
             "מייל אל $to$sub"
         }
         IntentType.OPEN_APP -> "פתיחת ${appLabel ?: "?"}"
+        IntentType.NAVIGATE -> "ניווט אל ${destination ?: "?"}"
+        IntentType.MEDIA -> when (mediaAction) {
+            MediaAction.PLAY -> "ניגון"
+            MediaAction.PAUSE -> "השהיה"
+            MediaAction.NEXT -> "שיר הבא"
+            MediaAction.PREV -> "שיר קודם"
+            null -> "מדיה"
+        }
         IntentType.CONFIRM -> "אישור"
         IntentType.CANCEL -> "ביטול"
         IntentType.UNKNOWN -> "לא זוהתה פקודה"

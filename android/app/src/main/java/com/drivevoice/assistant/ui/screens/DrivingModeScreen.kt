@@ -1,5 +1,7 @@
 package com.drivevoice.assistant.ui.screens
 
+import android.app.Activity
+import android.view.WindowManager
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +18,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -26,10 +27,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,6 +50,15 @@ fun DrivingModeScreen(
     onConfirmYes: () -> Unit,
     onConfirmNo: () -> Unit
 ) {
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        val window = (view.context as? Activity)?.window
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     val listening = state.assistantState == AssistantState.LISTENING
     val scale by animateFloatAsState(
         targetValue = if (listening) 1.12f else 1f,
@@ -77,6 +89,14 @@ fun DrivingModeScreen(
         StatusCard(title = "מה שנשמע", body = state.transcript.ifBlank { "—" })
         Spacer(modifier = Modifier.height(12.dp))
         StatusCard(title = "פעולה אחרונה", body = state.lastAction.ifBlank { "—" })
+
+        if (state.candidates.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            StatusCard(
+                title = "בחר איש קשר",
+                body = state.candidates.joinToString(" · ")
+            )
+        }
 
         if (state.assistantState == AssistantState.AWAITING_CONFIRM ||
             state.pendingIntent != null
@@ -127,7 +147,7 @@ fun DrivingModeScreen(
                     .scale(scale)
             ) {
                 Icon(
-                    imageVector = if (listening) Icons.Default.Mic else Icons.Default.MicOff,
+                    imageVector = Icons.Default.Mic,
                     contentDescription = "מיקרופון",
                     modifier = Modifier.size(56.dp),
                     tint = MaterialTheme.colorScheme.onPrimary
@@ -135,10 +155,11 @@ fun DrivingModeScreen(
             }
         }
         Text(
-            text = if (listening) "מאזין… הקש לעצירה" else "הקש לדבר",
+            text = if (listening) "מאזין… הקש לעצירה" else "הקש לדבר — אחרי אישור האפליקציה מאזינה לבד",
             modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onBackground
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center
         )
     }
 }

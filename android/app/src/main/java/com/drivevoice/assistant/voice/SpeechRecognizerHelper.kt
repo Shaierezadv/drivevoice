@@ -3,13 +3,15 @@ package com.drivevoice.assistant.voice
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import java.util.Locale
 
 /**
- * SpeechRecognizer wrapper — Hebrew he-IL.
+ * SpeechRecognizer wrapper — Hebrew he-IL, with a short retry on transient errors.
+ * Must be created/started on the main thread.
  */
 class SpeechRecognizerHelper(
     private val context: Context,
@@ -24,11 +26,34 @@ class SpeechRecognizerHelper(
     }
 
     private var recognizer: SpeechRecognizer? = null
+    private val main = Handler(Looper.getMainLooper())
+    private var retries = 0
+    private var destroyed = false
 
     fun isAvailable(): Boolean = SpeechRecognizer.isRecognitionAvailable(context)
 
     fun startListening() {
-        stop()
+        runOnMain { startInternal(resetRetries = true) }
+    }
+
+    fun stop() {
+        destroyed = true
+        main.removeCallbacksAndMessages(null)
+        try {
+            recognizer?.stopListening()
+            recognizer?.cancel()
+            recognizer?.destroy()
+        } catch (_: Exception) {
+        }
+        recognizer = null
+    }
+
+    fun destroy() = stop()
+
+    private fun startInternal(resetRetries: Boolean) {
+        if (destroyed) return
+        if (resetRetries) retries = 0
+        teardownRecognizer()
         if (!isAvailable()) {
             listener.onError("זיהוי דיבור אינו זמין במכשיר")
             return
@@ -48,6 +73,17 @@ class SpeechRecognizerHelper(
             }
 
             override fun onError(error: Int) {
+                val retryable = error == SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
+                    error == SpeechRecognizer.ERROR_CLIENT ||
+                    error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
+                    error == SpeechRecognizer.ERROR_NETWORK
+                if (!destroyed && retryable && retries < 2) {
+                    retries++
+                    val delay = if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 700L else 400L
+                    main.postDelayed({ startInternal(resetRetries = false) }, delay)
+                    return
+                }
                 val msg = when (error) {
                     SpeechRecognizer.ERROR_AUDIO -> "שגיאת אודיו"
                     SpeechRecognizer.ERROR_CLIENT -> "שגיאת לקוח"
@@ -82,17 +118,17 @@ class SpeechRecognizerHelper(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "he-IL")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "he-IL")
-            putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, true)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1000)
         }
         r.startListening(intent)
     }
 
-    fun stop() {
+    private fun teardownRecognizer() {
         try {
-            recognizer?.stopListening()
             recognizer?.cancel()
             recognizer?.destroy()
         } catch (_: Exception) {
@@ -100,5 +136,8 @@ class SpeechRecognizerHelper(
         recognizer = null
     }
 
-    fun destroy() = stop()
+    private fun runOnMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block()
+        else main.post(block)
+    }
 }

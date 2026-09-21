@@ -1,19 +1,29 @@
-# פקודות קול בעברית — DriveVoice MVP
+# פקודות קול בעברית — DriveVoice
 
 ## שיחה
 - התקשר ליוסי
 - תתקשר למיכל
+- אפשר להתקשר ליוסי
 - חייג 0501234567
 - התקשר למספר 03-7520432
+- חייג אפס חמש אפס אחד שתיים… (ספרות מדוברות)
 
 ## SMS
 - שלח הודעה לדני תגיע בעוד עשר דקות
 - שלח SMS ליוסי אני בדרך
 - הודעה למיכל מחכה בחניה
+- שלח הודעה לדוד כהן אני בדרך (שם רב-מילולי)
 
-## מייל
-- שלח מייל ל name@example.com נושא פגישה תוכן נתראה מחר
-- מייל ל name@example.com נושא שלום תוכן היי
+## ניווט
+- נווט לתל אביב
+- נווט הביתה
+- קח אותי לרמת גן
+
+## מוזיקה
+- נגן
+- השהה
+- שיר הבא
+- שיר קודם
 
 ## פתיחת אפליקציה
 - פתח ווייז
@@ -21,10 +31,15 @@
 - פתח WhatsApp / וואטסאפ
 - פתח מפות
 
-## אישור / ביטול
-- כן / אשר / בצע
-- לא / בטל / עצור
+## מייל
+- שלח מייל ל name@example.com נושא פגישה תוכן נתראה מחר
+- מייל ל name@example.com נושא שלום תוכן היי
 
-## מבנה NLU (MVP)
-Intent = CALL | SMS | EMAIL | OPEN_APP | CONFIRM | CANCEL | UNKNOWN
-Entities: contactName | phoneNumber | messageBody | email | subject | appLabel
+## אישור / ביטול
+- כן / אשר / בצע / כן בבקשה
+- לא / בטל / עצור
+- אחרי שיחה/SMS/מייל האפליקציה מאזינה אוטומטית לאישור
+
+## מבנה NLU
+Intent = CALL | SMS | EMAIL | OPEN_APP | NAVIGATE | MEDIA | CONFIRM | CANCEL | UNKNOWN
+Entities: contactName | phoneNumber | messageBody | email | subject | appLabel | destination | mediaAction

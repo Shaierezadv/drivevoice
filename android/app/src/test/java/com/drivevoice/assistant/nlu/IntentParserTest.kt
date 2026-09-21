@@ -136,4 +136,70 @@ class IntentParserTest {
         val r = IntentParser.parse("התקשר ליוסי")
         assertTrue(r.summaryHe().contains("יוסי"))
     }
+
+    @Test
+    fun politeConfirm() {
+        assertEquals(IntentType.CONFIRM, IntentParser.parse("כן בבקשה").type)
+    }
+
+    @Test
+    fun fillerPrefixCall() {
+        val r = IntentParser.parse("אפשר להתקשר ליוסי")
+        assertEquals(IntentType.CALL, r.type)
+        assertEquals("יוסי", r.contactName)
+    }
+
+    @Test
+    fun punctuationDoesNotBreakCall() {
+        val r = IntentParser.parse("התקשר ליוסי.")
+        assertEquals(IntentType.CALL, r.type)
+        assertEquals("יוסי", r.contactName)
+    }
+
+    @Test
+    fun confirmDoesNotEatNavigateLikePhrase() {
+        val r = IntentParser.parse("בצע ניווט לתל אביב")
+        assertTrue(r.type != IntentType.CONFIRM)
+    }
+
+    @Test
+    fun navigateToCity() {
+        val r = IntentParser.parse("נווט לתל אביב")
+        assertEquals(IntentType.NAVIGATE, r.type)
+        assertEquals("תל אביב", r.destination)
+    }
+
+    @Test
+    fun navigateTakeMe() {
+        val r = IntentParser.parse("קח אותי לרמת גן")
+        assertEquals(IntentType.NAVIGATE, r.type)
+        assertEquals("רמת גן", r.destination)
+    }
+
+    @Test
+    fun mediaNext() {
+        val r = IntentParser.parse("שיר הבא")
+        assertEquals(IntentType.MEDIA, r.type)
+        assertEquals(MediaAction.NEXT, r.mediaAction)
+    }
+
+    @Test
+    fun mediaPause() {
+        val r = IntentParser.parse("השהה")
+        assertEquals(IntentType.MEDIA, r.type)
+        assertEquals(MediaAction.PAUSE, r.mediaAction)
+    }
+
+    @Test
+    fun spokenHebrewPhoneDigits() {
+        val r = IntentParser.parse("חייג אפס חמש אפס אחד שתיים שלוש ארבע חמש שש שבע")
+        assertEquals(IntentType.CALL, r.type)
+        assertEquals("0501234567", r.phoneNumber)
+    }
+
+    @Test
+    fun awaitingConfirmLooseCancel() {
+        val r = IntentParser.parse("לא תודה", awaitingConfirm = true)
+        assertEquals(IntentType.CANCEL, r.type)
+    }
 }

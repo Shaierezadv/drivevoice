@@ -2,6 +2,8 @@ package com.drivevoice.assistant
 
 import android.app.Application
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -9,6 +11,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.drivevoice.assistant.actions.ActionExecutor
 import com.drivevoice.assistant.actions.ActionResult
+import com.drivevoice.assistant.actions.ResolvedContact
 import com.drivevoice.assistant.nlu.IntentParser
 import com.drivevoice.assistant.nlu.IntentType
 import com.drivevoice.assistant.nlu.ParsedIntent
@@ -27,7 +30,8 @@ data class UiState(
     val pendingIntent: ParsedIntent? = null,
     val confirmPrompt: String = "",
     val confirmBeforeSensitive: Boolean = true,
-    val error: String? = null
+    val error: String? = null,
+    val candidates: List<String> = emptyList()
 )
 
 class DrivingViewModel(app: Application) : AndroidViewModel(app) {
@@ -39,21 +43,40 @@ class DrivingViewModel(app: Application) : AndroidViewModel(app) {
     private val executor = ActionExecutor(app.applicationContext)
     private var speech: SpeechRecognizerHelper? = null
     private var tts: TtsHelper? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var listenAfterTts = false
+    private var pendingCandidates: List<ResolvedContact> = emptyList()
 
     init {
         ui = ui.copy(
             confirmBeforeSensitive = prefs.getBoolean("confirm_before_sensitive", true)
         )
         tts = TtsHelper(app.applicationContext) { speaking ->
-            if (speaking) {
-                ui = ui.copy(assistantState = AssistantState.SPEAKING)
-            } else if (ui.assistantState == AssistantState.SPEAKING) {
-                ui = ui.copy(
-                    assistantState = if (ui.pendingIntent != null)
-                        AssistantState.AWAITING_CONFIRM else AssistantState.IDLE
-                )
+            onMain {
+                if (speaking) {
+                    ui = ui.copy(assistantState = AssistantState.SPEAKING)
+                } else {
+                    val shouldListen = listenAfterTts
+                    listenAfterTts = false
+                    val awaiting = ui.pendingIntent != null
+                    ui = ui.copy(
+                        assistantState = if (awaiting) {
+                            AssistantState.AWAITING_CONFIRM
+                        } else {
+                            AssistantState.IDLE
+                        }
+                    )
+                    if (shouldListen && awaiting) {
+                        startListening(fromTts = true)
+                    }
+                }
             }
         }
+    }
+
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block()
+        else mainHandler.post(block)
     }
 
     fun setConfirmBeforeSensitive(value: Boolean) {
@@ -64,57 +87,92 @@ class DrivingViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleListen() {
         when (ui.assistantState) {
             AssistantState.LISTENING -> stopListening()
-            AssistantState.IDLE, AssistantState.AWAITING_CONFIRM -> startListening()
-            else -> { /* ignore while processing/speaking */ }
+            AssistantState.IDLE, AssistantState.AWAITING_CONFIRM, AssistantState.SPEAKING ->
+                startListening()
+            else -> { /* ignore while processing */ }
         }
     }
 
-    fun startListening() {
+    fun startListening(fromTts: Boolean = false) {
         val ctx = getApplication<Application>()
         speech?.destroy()
         speech = SpeechRecognizerHelper(ctx, object : SpeechRecognizerHelper.Listener {
             override fun onListeningStarted() {
-                ui = ui.copy(assistantState = AssistantState.LISTENING, error = null)
+                onMain { ui = ui.copy(assistantState = AssistantState.LISTENING, error = null) }
             }
 
             override fun onPartial(text: String) {
-                ui = ui.copy(transcript = text)
+                onMain { ui = ui.copy(transcript = text) }
             }
 
             override fun onResult(text: String) {
-                ui = ui.copy(transcript = text, assistantState = AssistantState.PROCESSING)
-                handleTranscript(text)
+                onMain {
+                    ui = ui.copy(transcript = text, assistantState = AssistantState.PROCESSING)
+                    handleTranscript(text)
+                }
             }
 
             override fun onError(message: String) {
-                ui = ui.copy(
-                    assistantState = if (ui.pendingIntent != null)
-                        AssistantState.AWAITING_CONFIRM else AssistantState.IDLE,
-                    error = message,
-                    lastAction = message
-                )
-                speak(message)
+                onMain {
+                    val awaiting = ui.pendingIntent != null
+                    ui = ui.copy(
+                        assistantState = if (awaiting) {
+                            AssistantState.AWAITING_CONFIRM
+                        } else {
+                            AssistantState.IDLE
+                        },
+                        error = message,
+                        lastAction = message
+                    )
+                    if (!awaiting) speak(message, listenAfter = false)
+                }
             }
 
             override fun onEndOfSpeech() {
                 // wait for results
             }
         })
-        tts?.stop()
+        if (!fromTts) {
+            listenAfterTts = false
+            tts?.stop()
+        }
         speech?.startListening()
     }
 
     fun stopListening() {
         speech?.stop()
         ui = ui.copy(
-            assistantState = if (ui.pendingIntent != null)
-                AssistantState.AWAITING_CONFIRM else AssistantState.IDLE
+            assistantState = if (ui.pendingIntent != null) {
+                AssistantState.AWAITING_CONFIRM
+            } else {
+                AssistantState.IDLE
+            }
         )
     }
 
     private fun handleTranscript(text: String) {
         viewModelScope.launch {
-            val parsed = IntentParser.parse(text)
+            val awaiting = ui.pendingIntent != null
+            val parsed = IntentParser.parse(text, awaitingConfirm = awaiting)
+
+            if (pendingCandidates.isNotEmpty() &&
+                awaiting &&
+                parsed.type != IntentType.CONFIRM &&
+                parsed.type != IntentType.CANCEL
+            ) {
+                applyDisambiguation(text)
+                return@launch
+            }
+
+            if (awaiting && parsed.type != IntentType.CONFIRM && parsed.type != IntentType.CANCEL) {
+                ui = ui.copy(
+                    lastAction = "יש פעולה ממתינה. אמור כן או לא",
+                    assistantState = AssistantState.AWAITING_CONFIRM
+                )
+                speak("יש פעולה ממתינה. אמור כן או לא", listenAfter = true)
+                return@launch
+            }
+
             when (parsed.type) {
                 IntentType.CONFIRM -> confirmPending()
                 IntentType.CANCEL -> cancelPending()
@@ -125,7 +183,7 @@ class DrivingViewModel(app: Application) : AndroidViewModel(app) {
                     )
                     speak("לא הבנתי. נסה שוב.")
                 }
-                IntentType.OPEN_APP -> {
+                IntentType.OPEN_APP, IntentType.NAVIGATE, IntentType.MEDIA -> {
                     val result = executor.prepareOrExecute(parsed, confirmed = true)
                     applyResult(result)
                 }
@@ -137,12 +195,47 @@ class DrivingViewModel(app: Application) : AndroidViewModel(app) {
                             lastAction = "ממתין לאישור: ${parsed.summaryHe()}",
                             assistantState = AssistantState.AWAITING_CONFIRM
                         )
-                        speak("לאשר: ${parsed.summaryHe()}? אמור כן או לא")
+                        speak("לאשר: ${parsed.summaryHe()}? אמור כן או לא", listenAfter = true)
                     } else {
                         val result = executor.prepareOrExecute(parsed, confirmed = true)
                         applyResult(result)
                     }
                 }
+            }
+        }
+    }
+
+    private fun applyDisambiguation(text: String) {
+        val needle = text.trim()
+        val filtered = pendingCandidates.filter {
+            it.displayName.contains(needle, ignoreCase = true)
+        }
+        when {
+            filtered.size == 1 -> {
+                val chosen = filtered.first()
+                val pending = ui.pendingIntent ?: return
+                pendingCandidates = emptyList()
+                val updated = pending.copy(
+                    contactName = chosen.displayName,
+                    phoneNumber = chosen.phoneNumber
+                )
+                ui = ui.copy(
+                    pendingIntent = updated,
+                    candidates = emptyList(),
+                    confirmPrompt = "לאשר: ${updated.summaryHe()}?",
+                    lastAction = "נבחר ${chosen.displayName}",
+                    assistantState = AssistantState.AWAITING_CONFIRM
+                )
+                speak("לאשר: ${updated.summaryHe()}? אמור כן או לא", listenAfter = true)
+            }
+            filtered.isEmpty() -> {
+                speak("לא מצאתי התאמה. אמור את השם שוב", listenAfter = true)
+            }
+            else -> {
+                pendingCandidates = filtered
+                val names = filtered.take(3).joinToString(", ") { it.displayName }
+                ui = ui.copy(candidates = filtered.map { it.displayName })
+                speak("מצאתי כמה: $names. אמור את השם המלא", listenAfter = true)
             }
         }
     }
@@ -153,17 +246,24 @@ class DrivingViewModel(app: Application) : AndroidViewModel(app) {
             speak("אין פעולה ממתינה")
             return
         }
+        if (pendingCandidates.size > 1) {
+            speak("בחר שם קודם", listenAfter = true)
+            return
+        }
         val result = executor.prepareOrExecute(pending, confirmed = true)
-        ui = ui.copy(pendingIntent = null, confirmPrompt = "")
+        ui = ui.copy(pendingIntent = null, confirmPrompt = "", candidates = emptyList())
+        pendingCandidates = emptyList()
         applyResult(result)
     }
 
     fun cancelPending() {
+        pendingCandidates = emptyList()
         ui = ui.copy(
             pendingIntent = null,
             confirmPrompt = "",
             lastAction = "בוטל",
-            assistantState = AssistantState.IDLE
+            assistantState = AssistantState.IDLE,
+            candidates = emptyList()
         )
         speak("בוטל")
     }
@@ -171,11 +271,13 @@ class DrivingViewModel(app: Application) : AndroidViewModel(app) {
     private fun applyResult(result: ActionResult) {
         when (result) {
             is ActionResult.Success -> {
+                pendingCandidates = emptyList()
                 ui = ui.copy(
                     lastAction = result.messageHe,
                     assistantState = AssistantState.IDLE,
                     pendingIntent = null,
-                    confirmPrompt = ""
+                    confirmPrompt = "",
+                    candidates = emptyList()
                 )
                 speak(result.messageHe)
             }
@@ -194,12 +296,24 @@ class DrivingViewModel(app: Application) : AndroidViewModel(app) {
                     lastAction = result.messageHe,
                     assistantState = AssistantState.AWAITING_CONFIRM
                 )
-                speak(result.messageHe)
+                speak(result.messageHe, listenAfter = true)
+            }
+            is ActionResult.NeedsDisambiguation -> {
+                pendingCandidates = result.candidates
+                ui = ui.copy(
+                    pendingIntent = result.intent,
+                    confirmPrompt = result.messageHe,
+                    lastAction = result.messageHe,
+                    assistantState = AssistantState.AWAITING_CONFIRM,
+                    candidates = result.candidates.map { it.displayName }
+                )
+                speak(result.messageHe, listenAfter = true)
             }
         }
     }
 
-    private fun speak(text: String) {
+    private fun speak(text: String, listenAfter: Boolean = false) {
+        listenAfterTts = listenAfter
         tts?.speak(text)
     }
 
