@@ -2,7 +2,7 @@ package com.drivevoice.assistant.nlu
 
 /**
  * Rule / regex Hebrew intent parser (no cloud NLU).
- * Patterns aligned with COMMANDS-HE.md.
+ * Patterns aligned with COMMANDS.md.
  */
 object IntentParser {
 
@@ -14,21 +14,23 @@ object IntentParser {
 
     private val confirmWords = listOf("כן", "אשר", "בצע", "מאשר", "בסדר", "אישור")
     private val cancelWords = listOf("לא", "בטל", "עצור", "ביטול", "תעזוב")
+    private val trailingFillers = setOf("בבקשה", "תודה", "טוב")
 
-    fun parse(raw: String): ParsedIntent {
+    fun parse(raw: String, awaitingConfirm: Boolean = false): ParsedIntent {
         val text = normalize(raw)
         if (text.isBlank()) {
             return ParsedIntent(IntentType.UNKNOWN, rawText = raw)
         }
 
-        // Confirm / cancel (short utterances)
-        if (matchesExactWord(text, confirmWords)) {
+        if (matchesCommandWord(text, confirmWords)) {
             return ParsedIntent(IntentType.CONFIRM, rawText = raw)
         }
-        if (matchesExactWord(text, cancelWords)) {
+        if (matchesCommandWord(text, cancelWords, allowFillersOnly = !awaitingConfirm)) {
             return ParsedIntent(IntentType.CANCEL, rawText = raw)
         }
 
+        parseNavigate(text, raw)?.let { return it }
+        parseMedia(text, raw)?.let { return it }
         parseCall(text, raw)?.let { return it }
         parseEmail(text, raw)?.let { return it }
         parseSms(text, raw)?.let { return it }
@@ -37,21 +39,40 @@ object IntentParser {
         return ParsedIntent(IntentType.UNKNOWN, rawText = raw)
     }
 
-    private fun normalize(s: String): String =
-        s.trim()
+    private fun normalize(s: String): String {
+        var t = s.trim()
             .replace('\u200f', ' ')
             .replace('\u200e', ' ')
+            .replace(Regex("[.,;:!?()\\[\\]\"'`״׳]"), " ")
             .replace(Regex("\\s+"), " ")
+            .trim()
+        t = t.replace(Regex("^(?:אפשר|אנא|תוכל|תוכלי)\\s+"), "")
+        t = t.replace(Regex("\\s+בבקשה$"), "")
+        t = HebrewNumbers.replaceSpokenDigits(t)
+        return t
+    }
 
-    private fun matchesExactWord(text: String, words: List<String>): Boolean {
+    /**
+     * Exact word, or short phrase whose first token is the command and the rest are fillers
+     * ("כן בבקשה"). Does not treat "בצע ניווט" as confirm.
+     */
+    private fun matchesCommandWord(
+        text: String,
+        words: List<String>,
+        allowFillersOnly: Boolean = true
+    ): Boolean {
         val t = text.trim()
-        return words.any { w -> t.equals(w, ignoreCase = true) || t == w }
+        if (words.any { t.equals(it, ignoreCase = true) }) return true
+        val tokens = t.split(Regex("\\s+"))
+        if (tokens.isEmpty() || tokens.size > 3) return false
+        if (tokens.first() !in words) return false
+        val rest = tokens.drop(1)
+        return if (allowFillersOnly) rest.all { it in trailingFillers } else rest.isEmpty() || rest.all { it in trailingFillers }
     }
 
     private fun parseCall(text: String, raw: String): ParsedIntent? {
-        // חייג 050... / התקשר למספר ...
         val dialNumber = Regex(
-            """^(?:חייג|חיוג|התקשר\s+למספר|תתקשר\s+למספר|התקשר\s+אל\s+מספר)\s+(.+)$"""
+            """^(?:חייג|חיוג|התקשר\s+למספר|תתקשר\s+למספר|התקשר\s+אל\s+מספר|להתקשר\s+למספר)\s+(.+)$"""
         ).find(text)
         if (dialNumber != null) {
             val rest = dialNumber.groupValues[1].trim()
@@ -61,9 +82,8 @@ object IntentParser {
             }
         }
 
-        // התקשר ליוסי / תתקשר למיכל / התקשר אל ...
         val callContact = Regex(
-            """^(?:התקשר|תתקשר|תתקשרי|חייג(?:י)?)\s+(?:אל\s+|ל)?(.+)$"""
+            """^(?:התקשר|תתקשר|תתקשרי|להתקשר|חייג(?:י)?)\s+(?:אל\s+|ל)?(.+)$"""
         ).find(text)
         if (callContact != null) {
             val rest = callContact.groupValues[1].trim()
@@ -82,9 +102,6 @@ object IntentParser {
     }
 
     private fun parseSms(text: String, raw: String): ParsedIntent? {
-        // שלח הודעה לדני תגיע בעוד...
-        // שלח SMS ליוסי אני בדרך
-        // הודעה למיכל מחכה בחניה
         val patterns = listOf(
             Regex("""^(?:שלח(?:י)?\s+)?(?:הודעה|sms|SMS|מסרון)\s+(?:אל\s+|ל)(.+)$""", RegexOption.IGNORE_CASE),
             Regex("""^שלח(?:י)?\s+(?:אל\s+|ל)(.+)$""")
@@ -116,22 +133,13 @@ object IntentParser {
     }
 
     private fun parseEmail(text: String, raw: String): ParsedIntent? {
-        // שלח מייל ל name@example.com נושא פגישה תוכן נתראה מחר
-        // מייל ל name@example.com נושא שלום תוכן היי
         val emailMatch = emailPattern.find(text) ?: return null
-        if (!text.contains("מייל") && !text.contains("אימייל") &&
-            !text.contains("email", ignoreCase = true) &&
-            !text.contains("דוא\"ל") && !text.contains("דואר")
-        ) {
-            // still allow if clearly mailto-style command
-            if (!text.startsWith("שלח") && !text.contains("מייל")) return null
-        }
         if (!Regex("""מייל|אימייל|email|דוא.?ל|דואר""", RegexOption.IGNORE_CASE).containsMatchIn(text)) {
             return null
         }
 
         val email = emailMatch.value
-        var after = text.substring(emailMatch.range.last + 1).trim()
+        val after = text.substring(emailMatch.range.last + 1).trim()
         var subject: String? = null
         var body: String? = null
 
@@ -168,19 +176,50 @@ object IntentParser {
         return ParsedIntent(IntentType.OPEN_APP, appLabel = normalizeAppLabel(label), rawText = raw)
     }
 
+    private fun parseNavigate(text: String, raw: String): ParsedIntent? {
+        val m = Regex(
+            """^(?:נווט|נווטי|ניווט|קח אותי|קחי אותי|קח אותנו)\s+(?:אל |ל|עד |כיוון )?(.+)$"""
+        ).find(text) ?: return null
+        val dest = m.groupValues[1].trim()
+            .removePrefix("ל")
+            .trim()
+        if (dest.isBlank()) return null
+        return ParsedIntent(IntentType.NAVIGATE, destination = dest, rawText = raw)
+    }
+
+    private fun parseMedia(text: String, raw: String): ParsedIntent? {
+        val t = text.trim()
+        val play = setOf("נגן", "נגני", "המשך", "המשיכי")
+        val pause = setOf("השהה", "השהי", "pause")
+        when {
+            t in play || Regex("""^נגן(?:י)?\s+מוזיקה$""").matches(t) ->
+                return ParsedIntent(IntentType.MEDIA, mediaAction = MediaAction.PLAY, rawText = raw)
+            t in pause ->
+                return ParsedIntent(IntentType.MEDIA, mediaAction = MediaAction.PAUSE, rawText = raw)
+            Regex("""^(?:שיר\s+הבא|השיר\s+הבא|הבא\s+שיר)$""").matches(t) ->
+                return ParsedIntent(IntentType.MEDIA, mediaAction = MediaAction.NEXT, rawText = raw)
+            Regex("""^(?:שיר\s+קודם|השיר\s+הקודם)$""").matches(t) ->
+                return ParsedIntent(IntentType.MEDIA, mediaAction = MediaAction.PREV, rawText = raw)
+        }
+        return null
+    }
+
     private fun extractPhone(s: String): String? {
-        val m = phonePattern.find(s) ?: return null
-        val digits = m.value.replace(Regex("[^\\d+]"), "")
-        return if (digits.length >= 7) digits else null
+        val m = phonePattern.find(s)
+        if (m != null) {
+            val digits = m.value.replace(Regex("[^\\d+]"), "")
+            if (digits.length >= 7) return digits
+        }
+        return HebrewNumbers.spokenRunToDigits(s)
     }
 
     private fun cleanName(s: String): String =
         s.replace(Regex("""^(את|ל|אל)\s+"""), "").trim()
 
     /**
-     * First token(s) as name; remainder as SMS body.
-     * Heuristic: first word is name unless multi-word known pattern.
-     * For MVP: first whitespace-separated token = name, rest = body.
+     * First whitespace-separated token = name (MVP default for tests).
+     * [ContactResolver] re-joins name+body and matches the longest contact prefix
+     * so "דוד כהן אני בדרך" still resolves correctly at execution time.
      */
     private fun splitNameAndBody(rest: String): Pair<String, String> {
         val parts = rest.trim().split(Regex("\\s+"), limit = 2)

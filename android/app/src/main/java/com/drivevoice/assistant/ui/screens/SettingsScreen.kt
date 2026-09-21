@@ -44,10 +44,16 @@ fun SettingsScreen(
                 onCheckedChange = onConfirmChanged
             )
         }
+        Text(
+            text = "מומלץ להשאיר דלוק בנהיגה — מונע חיוג או SMS בטעות.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f),
+            modifier = Modifier.padding(top = 8.dp)
+        )
         Spacer(modifier = Modifier.height(24.dp))
         Text("אפליקציות מועדפות", style = MaterialTheme.typography.titleLarge)
         Text(
-            text = "Waze, מפות, WhatsApp, מוזיקה — מזוהות לפי שם בתצוגה או חבילה ידועה.",
+            text = "Waze, מפות, WhatsApp, מוזיקה — מזוהות לפי שם בתצוגה או חבילה ידועה. ניווט קולי נפתח ב-Waze אם מותקן.",
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(top = 8.dp)
         )
